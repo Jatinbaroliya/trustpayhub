@@ -21,8 +21,13 @@ export const POST = async(req) =>{
     }
 
     //fetch the secrets of the users who is getting the payment
+    // Use environment variable first, fallback to database
     let user = await User.findOne({username: p.to_user})
-    const secret = user.razorpaysecret
+    const secret = process.env.RAZORPAY_KEY_SECRET?.trim() || user?.razorpaysecret?.trim()
+    
+    if (!secret) {
+        return NextResponse.json({success: false, message: "Payment gateway secret not configured"})
+    }
 
     //verify the payment
     let xx = validatePaymentVerification({"order_id": body.razorpay_order_id, "payment_id": body.razorpay_payment_id}, body.razorpay_signature, secret )

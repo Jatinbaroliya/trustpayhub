@@ -14,23 +14,47 @@ export const initiate = async (amount, to_username, paymentform) => {
             throw new Error("User not found")
         }
 
-        if (!user.razorpayid || !user.razorpaysecret) {
-            throw new Error("Payment gateway not configured")
+        // Get Razorpay keys from environment variables first, fallback to database
+        let keyId = process.env.RAZORPAY_KEY_ID?.trim() || user.razorpayid?.trim()
+        let secret = process.env.RAZORPAY_KEY_SECRET?.trim() || user.razorpaysecret?.trim()
+
+        if (!keyId || !secret) {
+            throw new Error("Payment gateway not configured. Please set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in environment variables or dashboard settings.")
         }
 
-        const secret = user.razorpaysecret
+        // Validate key format
+        if (keyId.length < 10) {
+            throw new Error("Invalid Razorpay Key ID. Please check your environment variables or dashboard settings.")
+        }
+        if (secret.length < 10) {
+            throw new Error("Invalid Razorpay Key Secret. Please check your environment variables or dashboard settings.")
+        }
+
+        // Log key format for debugging (without exposing full keys)
+        console.log("Using Razorpay Key ID:", keyId.substring(0, 15) + "...")
+        console.log("Using Razorpay Secret:", secret.substring(0, 8) + "...")
+        console.log("Key source:", process.env.RAZORPAY_KEY_ID ? "Environment variables" : "Database")
 
         const instance = new Razorpay({
-            key_id: user.razorpayid,
+            key_id: keyId,
             key_secret: secret
         })
 
+        // Validate amount
+        const orderAmount = Number.parseInt(amount)
+        if (!orderAmount || orderAmount < 100) {
+            throw new Error("Invalid amount. Minimum amount is ₹1 (100 paise)")
+        }
+
         const options = {
-            amount: Number.parseInt(amount),
-            currency: "INR"
+            amount: orderAmount,
+            currency: "INR",
+            receipt: `receipt_${to_username}_${Date.now()}`
         }
 
         const order = await instance.orders.create(options)
+        
+        console.log("Razorpay order created successfully:", order.id)
 
         await Payment.create({
             oid: order.id,
@@ -40,9 +64,29 @@ export const initiate = async (amount, to_username, paymentform) => {
             message: paymentform.message
         })
 
-        return order
+        // Return order with key_id so client can use the same key
+        return {
+            ...order,
+            key_id: keyId
+        }
     } catch (error) {
         console.error("Error initiating payment:", error)
+        
+        // Handle Razorpay authentication errors
+        if (error.statusCode === 401 || (error.error && error.error.code === 'BAD_REQUEST_ERROR')) {
+            throw new Error("Razorpay authentication failed. Please check your API keys in the dashboard settings.")
+        }
+        
+        // Handle database quota errors
+        if (error.message && error.message.includes("quota")) {
+            throw new Error("Database storage limit exceeded. Please contact support.")
+        }
+        
+        // Handle other Razorpay errors
+        if (error.statusCode) {
+            throw new Error(error.error?.description || `Payment gateway error (${error.statusCode}). Please try again.`)
+        }
+        
         throw error
     }
 }
@@ -60,6 +104,9 @@ export const fetchuser = async (username) => {
         return userObj
     } catch (error) {
         console.error("Error fetching user:", error)
+        if (error.message && error.message.includes("quota")) {
+            throw new Error("Database storage limit exceeded. Please contact support.")
+        }
         throw new Error("Failed to fetch user data")
     }
 }

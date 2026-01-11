@@ -34,7 +34,10 @@ const PaymentPage = ({ username }) => {
       }
     } catch (error) {
       console.error("Error fetching data:", error);
-      toast.error("Failed to load page data. Please refresh the page.");
+      const errorMessage = error.message || "Failed to load page data. Please refresh the page.";
+      if (typeof window !== "undefined" && window.toast) {
+        toast.error(errorMessage);
+      }
     }
   }, [username]);
 
@@ -68,7 +71,10 @@ const PaymentPage = ({ username }) => {
   };
 
   const pay = async (amount) => {
-    if (!currentUser.razorpayid) {
+    // Get Razorpay Key ID from environment variable or user database
+    const razorpayKeyId = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || currentUser.razorpayid;
+    
+    if (!razorpayKeyId) {
       toast.error("Payment gateway not configured. Please contact support.");
       return;
     }
@@ -87,9 +93,11 @@ const PaymentPage = ({ username }) => {
       }
 
       const orderId = orderResponse.id;
+      // Use the key_id from server response to ensure they match
+      const razorpayKey = orderResponse.key_id || razorpayKeyId;
 
       const options = {
-        key: currentUser.razorpayid,
+        key: razorpayKey,
         amount: amount,
         currency: "INR",
         name: "TrustPayHub",
@@ -112,12 +120,17 @@ const PaymentPage = ({ username }) => {
 
       const rzp1 = new window.Razorpay(options);
       rzp1.on("payment.failed", function (response) {
-        toast.error("Payment failed. Please try again.");
+        console.error("Payment failed:", response);
+        toast.error(`Payment failed: ${response.error?.description || "Please try again."}`);
+      });
+      rzp1.on("payment.success", function (response) {
+        console.log("Payment success:", response);
       });
       rzp1.open();
     } catch (error) {
       console.error("Payment error:", error);
-      toast.error(error.message || "Payment initiation failed. Please try again.");
+      const errorMessage = error.message || "Payment initiation failed. Please try again.";
+      toast.error(errorMessage);
     } finally {
       setPaymentLoading(false);
     }
