@@ -11,6 +11,18 @@ const authOptions = {
     }),
   ],
 
+  pages: {
+    signIn: '/login',
+    signOut: '/login',
+  },
+
+  events: {
+    async signOut({ token }) {
+      // Clear session on sign out
+      return Promise.resolve();
+    },
+  },
+
   callbacks: {
     async signIn({ user, account }) {
       if (account.provider === "github") {

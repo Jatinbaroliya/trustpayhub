@@ -75,7 +75,16 @@ const Navbar = () => {
               </li>
               <li>
                 <button
-                  onClick={() => signOut()}
+                  onClick={async () => {
+                    await signOut({ 
+                      callbackUrl: '/login', 
+                      redirect: true 
+                    });
+                    // Clear any cached data
+                    if (typeof window !== 'undefined') {
+                      window.location.href = '/login';
+                    }
+                  }}
                   className="block px-5 py-3 w-full text-left hover:bg-purple-100 rounded-lg transition-colors"
                 >
                   Sign Out
